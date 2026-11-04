@@ -1,0 +1,5 @@
+{
+    "cmake.configureOnOpen": true,
+    "C_Cpp.inlayHints.parameterNames.enabled": true,
+    "C_Cpp.inlayHints.autoDeclarationTypes.enabled": true
+}
