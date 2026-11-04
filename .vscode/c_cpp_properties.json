@@ -1,0 +1,14 @@
+{
+    "version": 4,
+    "configurations": [
+        {
+            "name": "Win32",
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "includePath": [
+                "${default}",
+                "${workspaceFolder}/build/_deps/glfw-src/include"
+            ],
+            "cppStandard": "c++20"
+        }
+    ]
+}
