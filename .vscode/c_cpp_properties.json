@@ -4,9 +4,11 @@
         {
             "name": "Win32",
             "configurationProvider": "ms-vscode.cmake-tools",
+            "mergeConfigurations": true,
             "includePath": [
                 "${default}",
-                "${workspaceFolder}/build/_deps/glfw-src/include"
+                "${workspaceFolder}/build/_deps/glfw-src/include",
+                "${env:VULKAN_SDK}/Include"
             ],
             "cppStandard": "c++20"
         }
