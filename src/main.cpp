@@ -1,3 +1,4 @@
+#define GLFW_INCLUDE_NONE // Don't pull in OpenGL's GL/gl.h (not needed for Vulkan)
 #define GLFW_INCLUDE_VULKAN //Include vulkan header
 #include <GLFW/glfw3.h> // GLFW header
 
