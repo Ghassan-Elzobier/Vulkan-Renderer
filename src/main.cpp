@@ -614,6 +614,19 @@ VkPipeline createPipeline(VkDevice device, VkShaderModule shaderModule, VkPipeli
     return pipeline;
 }
 
+VkQueryPool createQueryPool(VkDevice device) {
+    VkQueryPoolCreateInfo queryPoolInfo{};
+    queryPoolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+    queryPoolInfo.queryCount = 2;
+    queryPoolInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+
+    VkQueryPool queryPool = VK_NULL_HANDLE;
+    if (vkCreateQueryPool(device, &queryPoolInfo, nullptr, &queryPool) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create query pool");
+    }
+    return queryPool;
+}
+
 
 int main() {
     try {
@@ -645,6 +658,10 @@ int main() {
         }
 
         VkPhysicalDevice physicalDevice = pickPhysicalDevice(instance, surface);
+        VkPhysicalDeviceProperties props{};
+        vkGetPhysicalDeviceProperties(physicalDevice, &props);
+        float timestampPeriod = props.limits.timestampPeriod;
+        std::cout << "GPU: " << props.deviceName << ", timestampPeriod: " << timestampPeriod << "ns\n";
 
         QueueFamilyIndices indices = findQueueFamilies(physicalDevice, surface);
         VkDevice device = createLogicalDevice(physicalDevice, indices.compute.value());
@@ -671,6 +688,7 @@ int main() {
 
         VkCommandPool commandPool = createCommandPool(device, indices.compute.value());
         VkCommandBuffer commandBuffer =  createCommandBuffer(device, commandPool);
+        VkQueryPool queryPool = createQueryPool(device);
 
         VkSemaphore imageAvailable = createSemaphore(device);
         std::vector<VkSemaphore> renderFinished(swapchain.images.size());
@@ -684,9 +702,41 @@ int main() {
 
 
         uint32_t frameCount = 0;
+        uint64_t results[2];
+        const uint32_t WARMUP_FRAMES = 100;
+        const uint32_t MEASURE_FRAMES = 1000;
+        double totalMs = 0.0, minMs = 1e9, maxMs = 0.0;
+        uint32_t measured = 0;
+
+        const uint32_t width = swapchain.extent.width;
+        const uint32_t height = swapchain.extent.height;
+        std::cout << "Resolution: " << width << "x" << height << "\n";
+        
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
             vkWaitForFences(device, 1, &inFlight, VK_TRUE, UINT64_MAX);
+            if (frameCount != 0) {
+                VkResult r = vkGetQueryPoolResults(device, queryPool, 0, 2, sizeof(results), results, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
+                if (r != VK_SUCCESS) {
+                    std::cerr << "query read failed: " << r << "\n";
+                } else if (frameCount -1 >= WARMUP_FRAMES) {
+                double ms = (results[1] - results[0]) * timestampPeriod / 1e6;
+                totalMs += ms;
+                minMs = std::min(minMs, ms);
+                maxMs = std::max(maxMs, ms);
+                measured++;
+
+                if (measured == MEASURE_FRAMES) {
+                    double avgMs = totalMs / measured;
+                    double pathsPerSec = double(width) * height / (avgMs / 1000.0);
+                    std::cout << "GPU: " << props.deviceName << "\n"
+                    << "Frames: " << measured << " (1 spp each, max 8 bounces)\n"
+                    << "Dispatch avg " << avgMs << " ms, min" << minMs << " ms, max" << maxMs << " ms\n"
+                    << "Mpaths/s: " << pathsPerSec / 1e6 << "\n";
+                    break;
+                }
+                }
+            }
             vkResetFences(device, 1, &inFlight);
             uint32_t imageIndex;
             vkAcquireNextImageKHR(device, swapchain.handle, UINT64_MAX, imageAvailable, VK_NULL_HANDLE, &imageIndex);
@@ -695,6 +745,8 @@ int main() {
             VkCommandBufferBeginInfo beginInfo{};
             beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+            vkCmdResetQueryPool(commandBuffer, queryPool, 0,2);
 
             VkImageMemoryBarrier barrier{};
             barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -728,7 +780,9 @@ int main() {
             vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
             pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
             vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &frameCount);
+            vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, queryPool, 0);
             vkCmdDispatch(commandBuffer, (swapchain.extent.width + 7) / 8, (swapchain.extent.height + 7) / 8, 1);
+            vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queryPool, 1);
 
             barrier.image = storageImage.image;
             barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -828,6 +882,7 @@ int main() {
         for (VkSemaphore semaphore : renderFinished) {
             vkDestroySemaphore(device, semaphore, nullptr);
         }
+        vkDestroyQueryPool(device, queryPool, nullptr);
         vkDestroyFence(device, inFlight, nullptr);
         vkDestroyCommandPool(device, commandPool, nullptr);
         vkDestroyDevice(device, nullptr);
