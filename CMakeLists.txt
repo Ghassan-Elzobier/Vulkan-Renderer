@@ -30,11 +30,19 @@ FetchContent_MakeAvailable(glfw)
 # Locate Vulkan SDK installed on host operating system
 find_package(Vulkan REQUIRED)
 
-# Define your main executable target
-add_executable(Ray_Tracing_Renderer src/main.cpp)
+# Everything except main() is built once as a library, so later executables
+# (the compute harness, benchmarks, tests) can link the same code.
+add_library(renderer_core STATIC
+    src/vk/context.cpp
+)
+# Lets any file write #include "vk/context.h", relative to src/
+target_include_directories(renderer_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
+# PUBLIC: anything that links renderer_core also gets GLFW and Vulkan
+target_link_libraries(renderer_core PUBLIC glfw Vulkan::Vulkan)
 
-# Link GLFW and Vulkan against your executable
-target_link_libraries(Ray_Tracing_Renderer PRIVATE glfw Vulkan::Vulkan)
+# The app itself: main() wires the pieces together
+add_executable(Ray_Tracing_Renderer src/main.cpp)
+target_link_libraries(Ray_Tracing_Renderer PRIVATE renderer_core)
 
 find_program(GLSLC glslc HINTS "$ENV{VULKAN_SDK}/Bin")
 
