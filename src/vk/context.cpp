@@ -170,13 +170,29 @@ VkPhysicalDevice pickPhysicalDevice(VkInstance instance, VkSurfaceKHR surface) {
     std::vector<VkPhysicalDevice> devices(count);
     vkEnumeratePhysicalDevices(instance, &count, devices.data());
     const bool presenting = surface != VK_NULL_HANDLE;
+    // A real GPU beats a CPU implementation such as llvmpipe, which the laptop also exposes:
+    // discrete first, then integrated, then anything else that is suitable.
+    auto rank = [](VkPhysicalDevice device) {
+        VkPhysicalDeviceProperties props{};
+        vkGetPhysicalDeviceProperties(device, &props);
+        switch (props.deviceType) {
+            case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: return 0;
+            case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return 1;
+            default: return 2;
+        }
+    };
+    VkPhysicalDevice best = VK_NULL_HANDLE;
     for (VkPhysicalDevice device : devices) {
         QueueFamilyIndices indices = findQueueFamilies(device, surface);
-        if (checkDeviceExtensionSupport(device, presenting) && indices.compute && (indices.present || !presenting)) {
-            return device;
+        bool suitable = checkDeviceExtensionSupport(device, presenting) && indices.compute && (indices.present || !presenting);
+        if (suitable && (best == VK_NULL_HANDLE || rank(device) < rank(best))) {
+            best = device;
         }
     }
-    throw std::runtime_error("no suitable GPU found");
+    if (best == VK_NULL_HANDLE) {
+        throw std::runtime_error("no suitable GPU found");
+    }
+    return best;
 }
 
 VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice, uint32_t queueFamilyIndex, bool presenting) {
