@@ -34,6 +34,12 @@ find_package(Vulkan REQUIRED)
 # (the compute harness, benchmarks, tests) can link the same code.
 add_library(renderer_core STATIC
     src/vk/context.cpp
+    src/vk/swapchain.cpp
+    src/vk/sync.cpp
+    src/vk/resources.cpp
+    src/vk/pipeline.cpp
+    src/render/frame.cpp
+    src/bench/gpu_timer.cpp
 )
 # Lets any file write #include "vk/context.h", relative to src/
 target_include_directories(renderer_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
