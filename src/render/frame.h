@@ -1,5 +1,5 @@
 // Records one frame into a command buffer: barriers, the dispatch between two timestamps,
-// then the copy from the output image into this frame's swapchain image.
+// then (in the window) the copy from the output image into this frame's swapchain image.
 // It takes plain handles only, so it does not depend on how resources or the swapchain are built.
 #pragma once
 
@@ -25,6 +25,12 @@ struct ImageLayouts {
     VkImageLayout accum = VK_IMAGE_LAYOUT_UNDEFINED;
 };
 
+// Records the barriers and the timed dispatch, with no begin or end, so both the window
+// and the windowless harness trace a frame the same way. Leaves both images in GENERAL.
+void recordTrace(VkCommandBuffer commandBuffer, const FrameInputs& in, uint32_t frameCount,
+                 ImageLayouts& layouts);
+
+// recordTrace, then the copy into the swapchain image, in one begun-and-ended command buffer.
 // swapchainImage is the image acquired for this frame, which can be a different one every time.
 void recordFrame(VkCommandBuffer commandBuffer, const FrameInputs& in, uint32_t frameCount,
                  VkImage swapchainImage, ImageLayouts& layouts);
