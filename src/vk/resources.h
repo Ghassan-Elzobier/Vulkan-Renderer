@@ -17,3 +17,14 @@ struct StorageImage {
 
 StorageImage createStorageImage(VkDevice device, VkPhysicalDevice physicalDevice, VkExtent2D extent, VkFormat imageFormat);
 void destroyStorageImage(VkDevice device, const StorageImage& storageImage);
+
+// A buffer and the memory behind it. The harness uses a host-visible one to read the image back.
+struct Buffer {
+    VkBuffer buffer;
+    VkDeviceMemory memory;
+    VkDeviceSize size;
+};
+
+Buffer createBuffer(VkDevice device, VkPhysicalDevice physicalDevice, VkDeviceSize size,
+                    VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
+void destroyBuffer(VkDevice device, const Buffer& buffer);
