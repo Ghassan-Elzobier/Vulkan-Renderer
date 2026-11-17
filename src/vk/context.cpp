@@ -38,7 +38,10 @@ bool checkValidationLayerSupport() {
     return true;
 }
 
-bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
+bool checkDeviceExtensionSupport(VkPhysicalDevice device, bool presenting) {
+    if (!presenting) {
+        return true; // a windowless run needs no device extensions
+    }
     uint32_t count = 0;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr);
     std::vector<VkExtensionProperties> availableExtensions(count);
@@ -71,7 +74,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 
 } // namespace
 
-VkInstance createInstance() {
+VkInstance createInstance(const std::vector<const char*>& windowExtensions) {
     if (enableValidationLayers && !checkValidationLayerSupport()) {
         throw std::runtime_error("Validation layers requested but not available");
     }
@@ -84,10 +87,7 @@ VkInstance createInstance() {
     appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
     appInfo.apiVersion = VK_API_VERSION_1_3;
 
-    uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-    std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+    std::vector<const char*> extensions = windowExtensions;
     if (enableValidationLayers) {
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
@@ -154,6 +154,8 @@ QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surfa
     for (uint32_t i=0; i < queueFamilies.size(); i++) {
         if (queueFamilies[i].queueFlags & VK_QUEUE_COMPUTE_BIT) indices.compute = i;
 
+        if (surface == VK_NULL_HANDLE) continue; // windowless: nothing to present to
+
         VkBool32 presentSupport = VK_FALSE;
         vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
         if (presentSupport) indices.present = i;
@@ -167,16 +169,33 @@ VkPhysicalDevice pickPhysicalDevice(VkInstance instance, VkSurfaceKHR surface) {
     if (!count) throw std::runtime_error("no GPU with Vulkan Support");
     std::vector<VkPhysicalDevice> devices(count);
     vkEnumeratePhysicalDevices(instance, &count, devices.data());
+    const bool presenting = surface != VK_NULL_HANDLE;
+    // A real GPU beats a CPU implementation such as llvmpipe, which the laptop also exposes:
+    // discrete first, then integrated, then anything else that is suitable.
+    auto rank = [](VkPhysicalDevice device) {
+        VkPhysicalDeviceProperties props{};
+        vkGetPhysicalDeviceProperties(device, &props);
+        switch (props.deviceType) {
+            case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: return 0;
+            case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return 1;
+            default: return 2;
+        }
+    };
+    VkPhysicalDevice best = VK_NULL_HANDLE;
     for (VkPhysicalDevice device : devices) {
         QueueFamilyIndices indices = findQueueFamilies(device, surface);
-        if (checkDeviceExtensionSupport(device) && indices.compute && indices.present ) {
-            return device;
+        bool suitable = checkDeviceExtensionSupport(device, presenting) && indices.compute && (indices.present || !presenting);
+        if (suitable && (best == VK_NULL_HANDLE || rank(device) < rank(best))) {
+            best = device;
         }
     }
-    throw std::runtime_error("no suitable GPU found");
+    if (best == VK_NULL_HANDLE) {
+        throw std::runtime_error("no suitable GPU found");
+    }
+    return best;
 }
 
-VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice, uint32_t queueFamilyIndex) {
+VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice, uint32_t queueFamilyIndex, bool presenting) {
     float queuePriority = 1.0f;
     VkDeviceQueueCreateInfo queueCreateInfo{};
     queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -191,8 +210,10 @@ VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice, uint32_t queueFami
     createInfo.queueCreateInfoCount = 1;
     createInfo.pQueueCreateInfos = &queueCreateInfo;
     createInfo.pEnabledFeatures = &deviceFeatures;
-    createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+    if (presenting) {
+        createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
+        createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+    }
 
     VkDevice device = VK_NULL_HANDLE;
     if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
