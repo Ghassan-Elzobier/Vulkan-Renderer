@@ -50,6 +50,10 @@ target_link_libraries(renderer_core PUBLIC glfw Vulkan::Vulkan)
 add_executable(Ray_Tracing_Renderer src/main.cpp)
 target_link_libraries(Ray_Tracing_Renderer PRIVATE renderer_core)
 
+# The windowless compute harness: same path tracer and timing, no window, saves the image.
+add_executable(Ray_Tracing_Harness src/harness/main.cpp)
+target_link_libraries(Ray_Tracing_Harness PRIVATE renderer_core)
+
 find_program(GLSLC glslc HINTS "$ENV{VULKAN_SDK}/Bin")
 
 add_custom_command(
@@ -61,3 +65,4 @@ add_custom_command(
 
 add_custom_target(shaders DEPENDS ${CMAKE_BINARY_DIR}/raytrace.comp.spv)
 add_dependencies(Ray_Tracing_Renderer shaders)
+add_dependencies(Ray_Tracing_Harness shaders)
