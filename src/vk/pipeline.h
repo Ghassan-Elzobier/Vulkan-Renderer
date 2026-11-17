@@ -1,5 +1,5 @@
 // The compute kernel and its inputs: the descriptor set that points the shader at its images,
-// the pipeline layout (descriptors plus a 4-byte push constant), and the compiled shader.
+// the pipeline layout (descriptors plus an 8-byte push constant), and the compiled shader.
 #pragma once
 
 #include "vk/vulkan.h"
