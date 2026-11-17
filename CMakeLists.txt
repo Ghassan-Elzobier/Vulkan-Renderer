@@ -27,6 +27,15 @@ FetchContent_Declare(
 # Download the repo and make it available as a target
 FetchContent_MakeAvailable(glfw)
 
+# stb: single-header image libraries, used to write and read PNG files. It has no CMake
+# build of its own, so FetchContent only downloads it and we add its folder to the include path.
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG 9600522de53973336fa033a289858a4354cbb04c
+)
+FetchContent_MakeAvailable(stb)
+
 # Locate Vulkan SDK installed on host operating system
 find_package(Vulkan REQUIRED)
 
@@ -46,13 +55,24 @@ target_include_directories(renderer_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
 # PUBLIC: anything that links renderer_core also gets GLFW and Vulkan
 target_link_libraries(renderer_core PUBLIC glfw Vulkan::Vulkan)
 
+# Image saving, loading and comparing: plain C++, no Vulkan, so tools can use it without a GPU.
+add_library(image_io STATIC
+    src/image/image_io.cpp
+    src/image/compare.cpp
+)
+target_include_directories(image_io PUBLIC ${CMAKE_SOURCE_DIR}/src PRIVATE ${stb_SOURCE_DIR})
+
 # The app itself: main() wires the pieces together
 add_executable(Ray_Tracing_Renderer src/main.cpp)
 target_link_libraries(Ray_Tracing_Renderer PRIVATE renderer_core)
 
 # The windowless compute harness: same path tracer and timing, no window, saves the image.
 add_executable(Ray_Tracing_Harness src/harness/main.cpp)
-target_link_libraries(Ray_Tracing_Harness PRIVATE renderer_core)
+target_link_libraries(Ray_Tracing_Harness PRIVATE renderer_core image_io)
+
+# Compares a render with a reference image and reports the RMSE. Needs no GPU.
+add_executable(Image_Compare tools/image_compare.cpp)
+target_link_libraries(Image_Compare PRIVATE image_io)
 
 find_program(GLSLC glslc HINTS "$ENV{VULKAN_SDK}/Bin")
 
