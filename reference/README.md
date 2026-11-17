@@ -49,3 +49,4 @@ measured in the table below.
 | lavapipe spheres, two runs | 0 | 0 | 0 |
 | lavapipe spheres, 1024 vs 64 spp | 2.05 | 31 | 46.7% |
 | lavapipe spheres, 1024 vs 1100 spp | 0.26 | 2 | 16.0% |
+| lavapipe spheres vs a copy with the red sphere deleted (a fake BVH bug) | 12.35 | 138 | 36.4% |
