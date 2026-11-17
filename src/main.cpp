@@ -31,7 +31,9 @@ int main() {
             return 1;
         }
 
-        VkInstance instance = createInstance();
+        uint32_t glfwExtensionCount = 0;
+        const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+        VkInstance instance = createInstance({glfwExtensions, glfwExtensions + glfwExtensionCount});
 
         VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
         if (enableValidationLayers) {
@@ -50,7 +52,7 @@ int main() {
         std::cout << "GPU: " << props.deviceName << ", timestampPeriod: " << timestampPeriod << "ns\n";
 
         QueueFamilyIndices indices = findQueueFamilies(physicalDevice, surface);
-        VkDevice device = createLogicalDevice(physicalDevice, indices.compute.value());
+        VkDevice device = createLogicalDevice(physicalDevice, indices.compute.value(), true);
 
         VkQueue computeQueue = VK_NULL_HANDLE;
         vkGetDeviceQueue(device, indices.compute.value(), 0, &computeQueue);
