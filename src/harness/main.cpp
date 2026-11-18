@@ -5,27 +5,36 @@
 #include "vk/pipeline.h"
 #include "render/frame.h"
 #include "bench/gpu_timer.h"
+#include "image/image_io.h"
 
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
-#include <fstream>
+#include <cstdlib>
+#include <iterator>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 // The windowless compute harness: the same path tracer and the same timing as the window,
-// with no surface, swapchain or present semaphores. It runs the warm-up and measured frames,
-// prints the benchmark report, then reads the output image back and saves it as a PPM file.
+// with no surface, swapchain or present semaphores. It runs the warm-up and measured frames and
+// prints the benchmark report. Then it renders the image again from frame 0 for exactly --spp
+// samples per pixel, so the saved image never depends on the timer's frame counts, and saves it.
 //
-// Usage: Ray_Tracing_Harness [--out file.ppm] [--size WIDTHxHEIGHT]
+// Usage: Ray_Tracing_Harness [--scene spheres|grid] [--spp N] [--out file.png|file.ppm]
+//                            [--size WIDTHxHEIGHT] [--skip-timing]
 
 namespace {
 
+// The scene numbers match SCENE_* in shaders/raytrace.comp.
+const char* const kSceneNames[] = {"spheres", "grid"};
+
 struct Options {
-    std::string outPath = "harness.ppm";
+    std::string outPath = "harness.png";
     VkExtent2D extent{800, 600}; // the window's size, so the numbers compare like with like
+    uint32_t scene = 0;
+    uint32_t samplesPerPixel = 1024;
+    bool skipTiming = false;
 };
 
 Options parseOptions(int argc, char** argv) {
@@ -40,6 +49,26 @@ Options parseOptions(int argc, char** argv) {
                 throw std::runtime_error("--size wants WIDTHxHEIGHT, got '" + std::string(argv[i]) + "'");
             }
             options.extent = {w, h};
+        } else if (arg == "--scene" && i + 1 < argc) {
+            const std::string name = argv[++i];
+            bool found = false;
+            for (uint32_t s = 0; s < std::size(kSceneNames); s++) {
+                if (name == kSceneNames[s]) {
+                    options.scene = s;
+                    found = true;
+                }
+            }
+            if (!found) {
+                throw std::runtime_error("--scene wants spheres or grid, got '" + name + "'");
+            }
+        } else if (arg == "--spp" && i + 1 < argc) {
+            const long spp = std::strtol(argv[++i], nullptr, 10);
+            if (spp <= 0) {
+                throw std::runtime_error("--spp wants a positive number, got '" + std::string(argv[i]) + "'");
+            }
+            options.samplesPerPixel = uint32_t(spp);
+        } else if (arg == "--skip-timing") {
+            options.skipTiming = true;
         } else {
             throw std::runtime_error("Unknown argument '" + arg + "'");
         }
@@ -104,22 +133,6 @@ void recordReadback(VkCommandBuffer commandBuffer, VkImage image, VkExtent2D ext
     vkEndCommandBuffer(commandBuffer);
 }
 
-// Binary PPM (P6): a short text header, then 3 bytes per pixel, top row first.
-// The image is RGBA8, so the alpha byte of each pixel is dropped.
-void writePpm(const std::string& path, const uint8_t* rgba, VkExtent2D extent) {
-    std::ofstream file(path, std::ios::binary);
-    if (!file) {
-        throw std::runtime_error("Failed to open '" + path + "' for writing");
-    }
-    file << "P6\n" << extent.width << " " << extent.height << "\n255\n";
-    const size_t pixels = size_t(extent.width) * extent.height;
-    std::vector<uint8_t> rgb(pixels * 3);
-    for (size_t i = 0; i < pixels; i++) {
-        std::memcpy(&rgb[i * 3], &rgba[i * 4], 3);
-    }
-    file.write(reinterpret_cast<const char*>(rgb.data()), std::streamsize(rgb.size()));
-}
-
 } // namespace
 
 int main(int argc, char** argv) {
@@ -157,7 +170,7 @@ int main(int argc, char** argv) {
 
         VkPipelineLayout pipelineLayout = createPipelineLayout(device, descriptorSetLayout);
         VkShaderModule shaderModule = createShaderModule(device, "build/raytrace.comp.spv");
-        VkPipeline computePipeline = createPipeline(device, shaderModule, pipelineLayout);
+        VkPipeline computePipeline = createPipeline(device, shaderModule, pipelineLayout, options.scene);
         vkDestroyShaderModule(device, shaderModule, nullptr);
 
         VkCommandPool commandPool = createCommandPool(device, indices.compute.value());
@@ -180,25 +193,38 @@ int main(int argc, char** argv) {
         frameInputs.extent = extent;
         ImageLayouts imageLayouts{};
 
-        GpuTimer timer{};
-        std::cout << "Resolution: " << extent.width << "x" << extent.height << "\n";
+        std::cout << "Resolution: " << extent.width << "x" << extent.height
+                  << ", scene: " << kSceneNames[options.scene] << "\n";
 
-        // One frame at a time: submit, wait on the fence, read its timestamps. With nothing
-        // to present there are no semaphores; the fence is the only CPU-GPU handshake.
-        for (uint32_t frameCount = 0;; frameCount++) {
+        // Records, submits and waits for one frame. With nothing to present there are no
+        // semaphores; the fence is the only CPU-GPU handshake.
+        auto traceFrame = [&](uint32_t frameCount) {
             vkResetCommandBuffer(commandBuffer, 0);
             VkCommandBufferBeginInfo beginInfo{};
             beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             vkBeginCommandBuffer(commandBuffer, &beginInfo);
             recordTrace(commandBuffer, frameInputs, frameCount, imageLayouts);
             vkEndCommandBuffer(commandBuffer);
-
             submitAndWait(device, computeQueue, commandBuffer, fence);
+        };
 
-            if (readFrameTime(timer, device, queryPool, timestampPeriod, frameCount)) {
-                printReport(timer, props.deviceName, extent);
-                break;
+        // Phase 1, the benchmark: warm-up and measured frames, timed one at a time.
+        if (!options.skipTiming) {
+            GpuTimer timer{};
+            for (uint32_t frameCount = 0;; frameCount++) {
+                traceFrame(frameCount);
+                if (readFrameTime(timer, device, queryPool, timestampPeriod, frameCount)) {
+                    printReport(timer, props.deviceName, extent);
+                    break;
+                }
             }
+        }
+
+        // Phase 2, the image: start again from frame 0, which makes the shader overwrite the
+        // accumulated sum instead of adding to it, and stop after exactly samplesPerPixel frames.
+        // Frame i always uses the same random seeds, so the same GPU gives the same bytes.
+        for (uint32_t frameCount = 0; frameCount < options.samplesPerPixel; frameCount++) {
+            traceFrame(frameCount);
         }
 
         recordReadback(commandBuffer, storageImage.image, extent, readback.buffer);
@@ -206,9 +232,10 @@ int main(int argc, char** argv) {
 
         void* mapped = nullptr;
         vkMapMemory(device, readback.memory, 0, readback.size, 0, &mapped);
-        writePpm(options.outPath, static_cast<const uint8_t*>(mapped), extent);
+        const Image image = fromRgba(static_cast<const uint8_t*>(mapped), extent.width, extent.height);
         vkUnmapMemory(device, readback.memory);
-        std::cout << "Image: " << options.outPath << "\n";
+        saveImage(options.outPath, image);
+        std::cout << "Image: " << options.outPath << " (" << options.samplesPerPixel << " samples per pixel)\n";
 
         vkDeviceWaitIdle(device);
 

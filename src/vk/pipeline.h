@@ -14,4 +14,6 @@ void updateDescriptorSet(VkDevice device, VkDescriptorSet set, VkImageView outpu
 
 VkPipelineLayout createPipelineLayout(VkDevice device, VkDescriptorSetLayout descriptorSetLayout);
 VkShaderModule createShaderModule(VkDevice device, const std::string& filename);
-VkPipeline createPipeline(VkDevice device, VkShaderModule shaderModule, VkPipelineLayout pipelineLayout);
+// scene sets the shader's SCENE specialization constant (constant_id 0), see raytrace.comp.
+VkPipeline createPipeline(VkDevice device, VkShaderModule shaderModule, VkPipelineLayout pipelineLayout,
+                          uint32_t scene = 0);

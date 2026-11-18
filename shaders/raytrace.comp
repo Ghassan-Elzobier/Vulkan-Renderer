@@ -9,6 +9,14 @@ layout(push_constant) uniform PushConstants {
     uint frameCount;
 } pc;
 
+const uint SCENE_SPHERES = 0u;
+const uint SCENE_GRID = 1u;
+
+// Which hard-coded scene to trace. A specialization constant, not a push constant: its value is
+// fixed when the pipeline is created, so the compiler deletes the other scene's code entirely.
+// As a push constant the unused grid loop still cost the spheres scene 3.5% on the 5700 XT.
+layout(constant_id = 0) const uint SCENE = SCENE_SPHERES;
+
 const int LAMBERTIAN = 0;
 const int METAL = 1;
 
@@ -90,30 +98,55 @@ HitRecord hitSphere(vec3 origin, vec3 direction, vec3 center, float radius,
     return rec;
 }
 
-HitRecord hitScene(vec3 origin, vec3 direction) {
+void closestOf(inout HitRecord closest, HitRecord candidate) {
+    if (candidate.didHit && candidate.t < closest.t) closest = candidate;
+}
+
+// Scene 0: the original four spheres, kept exactly as they were so old images still match.
+HitRecord hitSpheres(vec3 origin, vec3 direction) {
     HitRecord closest;
     closest.didHit = false;
     closest.t = 1e30;
 
-    HitRecord candidate;
-
-    candidate = hitSphere(origin, direction,
-        vec3(0.0, 0.4, -2.0), 0.9, vec3(0.913, 0.921, 0.925) , METAL, 0.01);
-    if (candidate.didHit && candidate.t < closest.t) closest = candidate;
-
-    candidate = hitSphere(origin, direction,
-        vec3(-0.6, -0.28, -1.0), 0.22, vec3(0.8, 0.25, 0.25), LAMBERTIAN, 0.0);
-    if (candidate.didHit && candidate.t < closest.t) closest = candidate;
-
-    candidate = hitSphere(origin, direction,
-        vec3(0.55, -0.32, -0.85), 0.18, vec3(0.85, 0.65, 0.2), METAL, 0.3);
-    if (candidate.didHit && candidate.t < closest.t) closest = candidate;
-
-    candidate = hitSphere(origin, direction,
-        vec3(0.0, -100.5, -1.0), 100.0, vec3(0.5, 0.5, 0.5), LAMBERTIAN, 0.0);
-    if (candidate.didHit && candidate.t < closest.t) closest = candidate;
+    closestOf(closest, hitSphere(origin, direction,
+        vec3(0.0, 0.4, -2.0), 0.9, vec3(0.913, 0.921, 0.925) , METAL, 0.01));
+    closestOf(closest, hitSphere(origin, direction,
+        vec3(-0.6, -0.28, -1.0), 0.22, vec3(0.8, 0.25, 0.25), LAMBERTIAN, 0.0));
+    closestOf(closest, hitSphere(origin, direction,
+        vec3(0.55, -0.32, -0.85), 0.18, vec3(0.85, 0.65, 0.2), METAL, 0.3));
+    closestOf(closest, hitSphere(origin, direction,
+        vec3(0.0, -100.5, -1.0), 100.0, vec3(0.5, 0.5, 0.5), LAMBERTIAN, 0.0));
 
     return closest;
+}
+
+// Scene 1: an 8 x 8 grid of small spheres on the ground, 65 spheres in all. Every ray tests
+// all of them, so brute force gets 16 times more work than scene 0: the case a BVH is for.
+// Colours and materials come from pcgHash of the sphere's index, so they never change.
+HitRecord hitGrid(vec3 origin, vec3 direction) {
+    HitRecord closest;
+    closest.didHit = false;
+    closest.t = 1e30;
+
+    closestOf(closest, hitSphere(origin, direction,
+        vec3(0.0, -100.5, -1.0), 100.0, vec3(0.5, 0.5, 0.5), LAMBERTIAN, 0.0));
+
+    for (int i = 0; i < 64; i++) {
+        int gx = i % 8;
+        int gz = i / 8;
+        vec3 center = vec3(-1.4 + 0.4 * float(gx), -0.35, -1.2 - 0.4 * float(gz));
+        uint h = pcgHash(uint(i) + 1u);
+        vec3 albedo = vec3(float(h & 255u), float((h >> 8u) & 255u), float((h >> 16u) & 255u)) / 255.0;
+        albedo = 0.2 + 0.7 * albedo;
+        int material = ((h >> 24u) & 3u) == 0u ? METAL : LAMBERTIAN;
+        closestOf(closest, hitSphere(origin, direction, center, 0.15, albedo, material, 0.1));
+    }
+
+    return closest;
+}
+
+HitRecord hitScene(vec3 origin, vec3 direction) {
+    return SCENE == SCENE_GRID ? hitGrid(origin, direction) : hitSpheres(origin, direction);
 }
 
 void main() {
