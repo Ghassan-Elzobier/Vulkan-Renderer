@@ -39,8 +39,7 @@ void recordTrace(VkCommandBuffer commandBuffer, const FrameInputs& in, uint32_t 
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, in.pipeline);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
     in.pipelineLayout, 0, 1, &in.descriptorSet, 0, nullptr);
-    const PushConstants push{frameCount, in.scene};
-    vkCmdPushConstants(commandBuffer, in.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+    vkCmdPushConstants(commandBuffer, in.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &frameCount);
     vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, in.timestamps, 0);
     vkCmdDispatch(commandBuffer, (in.extent.width + 7) / 8, (in.extent.height + 7) / 8, 1);
     vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, in.timestamps, 1);
