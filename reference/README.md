@@ -38,9 +38,13 @@ exits 0 on pass, 1 on fail, 2 on error.
   one GPU and miss on the other. Each such path is 1/1024 of its pixel.
 - **Fewer samples:** noise. On lavapipe, 1024 against 64 samples gives RMSE about 2.05.
 
-A change that should not alter the picture (a BVH replacing brute force) is checked against
-the reference from the same GPU with `--max-rmse 0`. Across devices, use the tolerance
-measured in the table below.
+## Which threshold
+
+- **Same GPU, only C++ changed:** `--max-rmse 0`. Nothing that touches the maths changed.
+- **Same GPU, shader changed but the picture should not (a BVH replacing brute force):**
+  `--max-rmse 0.1`. The compiler may round differently; across whole devices that gives
+  about 0.06, while a missing sphere gives about 12.
+- **Across devices:** `--max-rmse 0.1`, from the table below.
 
 ## Measured
 
@@ -50,3 +54,17 @@ measured in the table below.
 | lavapipe spheres, 1024 vs 64 spp | 2.05 | 31 | 46.7% |
 | lavapipe spheres, 1024 vs 1100 spp | 0.26 | 2 | 16.0% |
 | lavapipe spheres vs a copy with the red sphere deleted (a fake BVH bug) | 12.35 | 138 | 36.4% |
+| lavapipe vs RX 5700 XT, spheres | 0.0098 | 1 | 0.03% |
+| RX 5700 XT vs Iris Xe, spheres | 0.0615 | 1 | 1.13% |
+| RX 5700 XT vs Iris Xe, grid | 0.0620 | 1 | 1.15% |
+
+## Timing at these settings (harness, 800x600, 1 spp per frame, 1000 measured frames)
+
+| Device | spheres (Mpaths/s) | grid (Mpaths/s) |
+| --- | --- | --- |
+| RX 5700 XT | 3309 | 723 |
+| Iris Xe | 390 (avg 1.23 ms, min 0.77: unsteady) | 61 |
+| lavapipe | 20.5 | 3.2 |
+
+The scene is a specialization constant: as a push constant, the never-taken grid loop cost
+the spheres scene 3.5% on the RX 5700 XT (3196 against 3313).
