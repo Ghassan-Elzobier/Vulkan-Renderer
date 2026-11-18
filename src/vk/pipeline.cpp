@@ -114,7 +114,7 @@ VkPipelineLayout createPipelineLayout(VkDevice device, VkDescriptorSetLayout des
     VkPushConstantRange pushRange{};
     pushRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     pushRange.offset = 0;
-    pushRange.size = 2 * sizeof(uint32_t); // frameCount and scene, see PushConstants in render/frame.h
+    pushRange.size = sizeof(uint32_t);
 
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -145,12 +145,26 @@ VkShaderModule createShaderModule(VkDevice device, const std::string& filename) 
     return shaderModule;
 }
 
-VkPipeline createPipeline(VkDevice device, VkShaderModule shaderModule, VkPipelineLayout pipelineLayout) {
+VkPipeline createPipeline(VkDevice device, VkShaderModule shaderModule, VkPipelineLayout pipelineLayout,
+                          uint32_t scene) {
+    // One specialization constant: 4 bytes at offset 0 of the data, for constant_id 0.
+    VkSpecializationMapEntry sceneEntry{};
+    sceneEntry.constantID = 0;
+    sceneEntry.offset = 0;
+    sceneEntry.size = sizeof(uint32_t);
+
+    VkSpecializationInfo specialization{};
+    specialization.mapEntryCount = 1;
+    specialization.pMapEntries = &sceneEntry;
+    specialization.dataSize = sizeof(scene);
+    specialization.pData = &scene;
+
     VkPipelineShaderStageCreateInfo stageInfo{};
     stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     stageInfo.module = shaderModule;
     stageInfo.pName = "main";
+    stageInfo.pSpecializationInfo = &specialization;
 
     VkComputePipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;

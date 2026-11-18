@@ -16,7 +16,6 @@ struct FrameInputs {
     VkImage accumImage;
     VkQueryPool timestamps;
     VkExtent2D extent;
-    uint32_t scene = 0; // which scene the shader traces, see SCENE_* in raytrace.comp
 };
 
 // The layouts the two storage images were left in by the previous frame.
@@ -24,12 +23,6 @@ struct FrameInputs {
 struct ImageLayouts {
     VkImageLayout output = VK_IMAGE_LAYOUT_UNDEFINED;
     VkImageLayout accum = VK_IMAGE_LAYOUT_UNDEFINED;
-};
-
-// The shader's push constants, in the same order as its PushConstants block.
-struct PushConstants {
-    uint32_t frameCount;
-    uint32_t scene;
 };
 
 // Records the barriers and the timed dispatch, with no begin or end, so both the window

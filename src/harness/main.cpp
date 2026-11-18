@@ -170,7 +170,7 @@ int main(int argc, char** argv) {
 
         VkPipelineLayout pipelineLayout = createPipelineLayout(device, descriptorSetLayout);
         VkShaderModule shaderModule = createShaderModule(device, "build/raytrace.comp.spv");
-        VkPipeline computePipeline = createPipeline(device, shaderModule, pipelineLayout);
+        VkPipeline computePipeline = createPipeline(device, shaderModule, pipelineLayout, options.scene);
         vkDestroyShaderModule(device, shaderModule, nullptr);
 
         VkCommandPool commandPool = createCommandPool(device, indices.compute.value());
@@ -191,7 +191,6 @@ int main(int argc, char** argv) {
         frameInputs.accumImage = accumImage.image;
         frameInputs.timestamps = queryPool;
         frameInputs.extent = extent;
-        frameInputs.scene = options.scene;
         ImageLayouts imageLayouts{};
 
         std::cout << "Resolution: " << extent.width << "x" << extent.height
