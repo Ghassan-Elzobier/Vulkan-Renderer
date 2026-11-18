@@ -63,8 +63,13 @@ exits 0 on pass, 1 on fail, 2 on error.
 | Device | spheres (Mpaths/s) | grid (Mpaths/s) |
 | --- | --- | --- |
 | RX 5700 XT | 3309 | 723 |
-| Iris Xe | 390 (avg 1.23 ms, min 0.77: unsteady) | 61 |
+| Iris Xe | 340-406 (unsteady, see below) | 61 |
 | lavapipe | 20.5 | 3.2 |
 
 The scene is a specialization constant: as a push constant, the never-taken grid loop cost
 the spheres scene 3.5% on the RX 5700 XT (3196 against 3313).
+
+On 2026-11-18 the Iris Xe ran well under its 560 Mpaths/s baseline for both versions. Alternating
+runs with 30 s pauses gave main 235, 213, 303 against this branch 406, 350, 340, so the branch is
+not slower there; the laptop was. The iGPU shares power and cooling with the CPU, so never time
+it straight after a build.
