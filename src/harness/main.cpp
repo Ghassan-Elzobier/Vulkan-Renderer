@@ -4,6 +4,8 @@
 #include "vk/resources.h"
 #include "vk/pipeline.h"
 #include "render/frame.h"
+#include "render/scene_buffers.h"
+#include "scene/mesh.h"
 #include "bench/gpu_timer.h"
 #include "image/image_io.h"
 
@@ -21,16 +23,19 @@
 // prints the benchmark report. Then it renders the image again from frame 0 for exactly --spp
 // samples per pixel, so the saved image never depends on the timer's frame counts, and saves it.
 //
-// Usage: Ray_Tracing_Harness [--scene spheres|grid] [--spp N] [--out file.png|file.ppm]
-//                            [--size WIDTHxHEIGHT] [--skip-timing]
+// Usage: Ray_Tracing_Harness [--scene spheres|grid|triangles] [--obj file.obj] [--spp N]
+//                            [--out file.png|file.ppm] [--size WIDTHxHEIGHT] [--skip-timing]
+// --obj traces that model on the ground instead of the built-in triangles (implies --scene triangles).
 
 namespace {
 
 // The scene numbers match SCENE_* in shaders/raytrace.comp.
-const char* const kSceneNames[] = {"spheres", "grid"};
+const char* const kSceneNames[] = {"spheres", "grid", "triangles"};
+constexpr uint32_t kSceneTriangles = 2;
 
 struct Options {
     std::string outPath = "harness.png";
+    std::string objPath; // empty: the built-in triangle scene
     VkExtent2D extent{800, 600}; // the window's size, so the numbers compare like with like
     uint32_t scene = 0;
     uint32_t samplesPerPixel = 1024;
@@ -59,8 +64,11 @@ Options parseOptions(int argc, char** argv) {
                 }
             }
             if (!found) {
-                throw std::runtime_error("--scene wants spheres or grid, got '" + name + "'");
+                throw std::runtime_error("--scene wants spheres, grid or triangles, got '" + name + "'");
             }
+        } else if (arg == "--obj" && i + 1 < argc) {
+            options.objPath = argv[++i];
+            options.scene = kSceneTriangles;
         } else if (arg == "--spp" && i + 1 < argc) {
             const long spp = std::strtol(argv[++i], nullptr, 10);
             if (spp <= 0) {
@@ -163,17 +171,30 @@ int main(int argc, char** argv) {
         StorageImage storageImage = createStorageImage(device, physicalDevice, extent, VK_FORMAT_R8G8B8A8_UNORM);
         StorageImage accumImage = createStorageImage(device, physicalDevice, extent, VK_FORMAT_R32G32B32A32_SFLOAT);
 
+        VkCommandPool commandPool = createCommandPool(device, indices.compute.value());
+
+        // The sphere scenes live in the shader; only the triangle scene needs buffers.
+        Mesh mesh;
+        if (options.scene == kSceneTriangles) {
+            if (options.objPath.empty()) {
+                mesh = makeTriangleScene();
+            } else {
+                mesh = makeObjScene(options.objPath);
+            }
+        }
+        SceneBuffers sceneBuffers = uploadScene(device, physicalDevice, computeQueue, commandPool, mesh);
+
         VkDescriptorSetLayout descriptorSetLayout = createDescriptorSetLayout(device);
         VkDescriptorPool descriptorPool = createDescriptorPool(device);
         VkDescriptorSet descriptorSet = createDescriptorSet(device, descriptorPool, descriptorSetLayout);
-        updateDescriptorSet(device, descriptorSet, storageImage.view, accumImage.view);
+        updateDescriptorSet(device, descriptorSet, storageImage.view, accumImage.view,
+                            sceneBuffers.triangles.buffer, sceneBuffers.materials.buffer);
 
         VkPipelineLayout pipelineLayout = createPipelineLayout(device, descriptorSetLayout);
         VkShaderModule shaderModule = createShaderModule(device, "build/raytrace.comp.spv");
         VkPipeline computePipeline = createPipeline(device, shaderModule, pipelineLayout, options.scene);
         vkDestroyShaderModule(device, shaderModule, nullptr);
 
-        VkCommandPool commandPool = createCommandPool(device, indices.compute.value());
         VkCommandBuffer commandBuffer = createCommandBuffer(device, commandPool);
         VkQueryPool queryPool = createQueryPool(device);
         VkFence fence = createFence(device);
@@ -194,7 +215,12 @@ int main(int argc, char** argv) {
         ImageLayouts imageLayouts{};
 
         std::cout << "Resolution: " << extent.width << "x" << extent.height
-                  << ", scene: " << kSceneNames[options.scene] << "\n";
+                  << ", scene: " << kSceneNames[options.scene];
+        if (options.scene == kSceneTriangles) {
+            std::cout << " (" << mesh.triangles.size() << " triangles"
+                      << (options.objPath.empty() ? "" : ", " + options.objPath) << ")";
+        }
+        std::cout << "\n";
 
         // Records, submits and waits for one frame. With nothing to present there are no
         // semaphores; the fence is the only CPU-GPU handshake.
@@ -240,6 +266,7 @@ int main(int argc, char** argv) {
         vkDeviceWaitIdle(device);
 
         destroyBuffer(device, readback);
+        destroySceneBuffers(device, sceneBuffers);
         vkDestroyDescriptorPool(device, descriptorPool, nullptr);
         vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
         vkDestroyPipeline(device, computePipeline, nullptr);

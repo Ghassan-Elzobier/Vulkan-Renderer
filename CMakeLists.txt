@@ -39,6 +39,15 @@ FetchContent_MakeAvailable(stb)
 # Locate Vulkan SDK installed on host operating system
 find_package(Vulkan REQUIRED)
 
+# The scene on the CPU: meshes, OBJ loading and the BVH build. Plain C++, no Vulkan,
+# so the BVH can be built and checked on any machine.
+add_library(scene STATIC
+    src/scene/mesh.cpp
+    src/scene/bvh.cpp
+    src/scene/sah_split.cpp
+)
+target_include_directories(scene PUBLIC ${CMAKE_SOURCE_DIR}/src)
+
 # Everything except main() is built once as a library, so later executables
 # (the compute harness, benchmarks, tests) can link the same code.
 add_library(renderer_core STATIC
@@ -48,12 +57,13 @@ add_library(renderer_core STATIC
     src/vk/resources.cpp
     src/vk/pipeline.cpp
     src/render/frame.cpp
+    src/render/scene_buffers.cpp
     src/bench/gpu_timer.cpp
 )
 # Lets any file write #include "vk/context.h", relative to src/
 target_include_directories(renderer_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
 # PUBLIC: anything that links renderer_core also gets GLFW and Vulkan
-target_link_libraries(renderer_core PUBLIC glfw Vulkan::Vulkan)
+target_link_libraries(renderer_core PUBLIC glfw Vulkan::Vulkan scene)
 
 # Image saving, loading and comparing: plain C++, no Vulkan, so tools can use it without a GPU.
 add_library(image_io STATIC
@@ -73,6 +83,13 @@ target_link_libraries(Ray_Tracing_Harness PRIVATE renderer_core image_io)
 # Compares a render with a reference image and reports the RMSE. Needs no GPU.
 add_executable(Image_Compare tools/image_compare.cpp)
 target_link_libraries(Image_Compare PRIVATE image_io)
+
+# Builds BVHs for a few meshes and checks they find the same closest hit as brute force for
+# many random rays, then prints the tree's statistics. Needs no GPU. Run it with ctest.
+add_executable(Bvh_Check tools/bvh_check.cpp)
+target_link_libraries(Bvh_Check PRIVATE scene)
+enable_testing()
+add_test(NAME bvh_matches_brute_force COMMAND Bvh_Check)
 
 find_program(GLSLC glslc HINTS "$ENV{VULKAN_SDK}/Bin")
 

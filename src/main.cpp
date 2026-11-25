@@ -5,6 +5,7 @@
 #include "vk/resources.h"
 #include "vk/pipeline.h"
 #include "render/frame.h"
+#include "render/scene_buffers.h"
 #include "bench/gpu_timer.h"
 
 #include <cstdint>
@@ -64,17 +65,23 @@ int main() {
         StorageImage storageImage = createStorageImage(device, physicalDevice, swapchain.extent, VK_FORMAT_R8G8B8A8_UNORM);
         StorageImage accumImage = createStorageImage(device, physicalDevice, swapchain.extent, VK_FORMAT_R32G32B32A32_SFLOAT);
 
+        VkCommandPool commandPool = createCommandPool(device, indices.compute.value());
+
+        // The window draws the spheres scene, which lives in the shader, so the triangle
+        // buffers only need to exist. An empty mesh gives one placeholder of each.
+        SceneBuffers sceneBuffers = uploadScene(device, physicalDevice, computeQueue, commandPool, Mesh{});
+
         VkDescriptorSetLayout descriptorSetLayout = createDescriptorSetLayout(device);
         VkDescriptorPool descriptorPool = createDescriptorPool(device);
         VkDescriptorSet descriptorSet = createDescriptorSet(device, descriptorPool, descriptorSetLayout);
-        updateDescriptorSet(device, descriptorSet, storageImage.view, accumImage.view);
+        updateDescriptorSet(device, descriptorSet, storageImage.view, accumImage.view,
+                            sceneBuffers.triangles.buffer, sceneBuffers.materials.buffer);
 
         VkPipelineLayout pipelineLayout = createPipelineLayout(device, descriptorSetLayout);
         VkShaderModule shaderModule = createShaderModule(device, "build/raytrace.comp.spv");
         VkPipeline computePipeline = createPipeline(device, shaderModule, pipelineLayout);
         vkDestroyShaderModule(device, shaderModule, nullptr);
 
-        VkCommandPool commandPool = createCommandPool(device, indices.compute.value());
         VkCommandBuffer commandBuffer =  createCommandBuffer(device, commandPool);
         VkQueryPool queryPool = createQueryPool(device);
 
@@ -147,6 +154,7 @@ int main() {
 
         vkDeviceWaitIdle(device);
 
+        destroySceneBuffers(device, sceneBuffers);
         vkDestroyDescriptorPool(device, descriptorPool, nullptr);
         vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
         vkDestroyPipeline(device, computePipeline, nullptr);
