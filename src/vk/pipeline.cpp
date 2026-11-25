@@ -27,20 +27,18 @@ std::vector<char> readFile(const std::string& filename) {
 } // namespace
 
 VkDescriptorSetLayout createDescriptorSetLayout(VkDevice device) {
-    VkDescriptorSetLayoutBinding bindings[2]{};
-    bindings[0].binding = 0;
-    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    bindings[0].descriptorCount = 1;
-    bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-    bindings[1].binding = 1;
-    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    bindings[1].descriptorCount = 1;
-    bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    // 0: output image, 1: accumulation image, 2: triangles, 3: materials, 4: spheres.
+    VkDescriptorSetLayoutBinding bindings[5]{};
+    for (uint32_t i = 0; i < 5; i++) {
+        bindings[i].binding = i;
+        bindings[i].descriptorType = i < 2 ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[i].descriptorCount = 1;
+        bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    }
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 2;
+    layoutInfo.bindingCount = 5;
     layoutInfo.pBindings = bindings;
 
     VkDescriptorSetLayout layout = VK_NULL_HANDLE;
@@ -51,15 +49,17 @@ VkDescriptorSetLayout createDescriptorSetLayout(VkDevice device) {
 }
 
 VkDescriptorPool createDescriptorPool(VkDevice device) {
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    poolSize.descriptorCount = 2;
+    VkDescriptorPoolSize poolSizes[2]{};
+    poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    poolSizes[0].descriptorCount = 2;
+    poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    poolSizes[1].descriptorCount = 3;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.maxSets = 1;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.poolSizeCount = 2;
+    poolInfo.pPoolSizes = poolSizes;
 
     VkDescriptorPool pool = VK_NULL_HANDLE;
     if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &pool) != VK_SUCCESS) {
@@ -83,14 +83,22 @@ VkDescriptorSet createDescriptorSet(VkDevice device, VkDescriptorPool pool, VkDe
     return set;
 }
 
-void updateDescriptorSet(VkDevice device, VkDescriptorSet set, VkImageView outputView, VkImageView accumView) {
+void updateDescriptorSet(VkDevice device, VkDescriptorSet set, VkImageView outputView, VkImageView accumView,
+                         VkBuffer triangles, VkBuffer materials, VkBuffer spheres) {
     VkDescriptorImageInfo imageInfos[2]{};
     imageInfos[0].imageView = outputView;
     imageInfos[0].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     imageInfos[1].imageView = accumView;
     imageInfos[1].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
-    VkWriteDescriptorSet write[2]{};
+    VkDescriptorBufferInfo bufferInfos[3]{};
+    const VkBuffer buffers[3] = {triangles, materials, spheres};
+    for (uint32_t i = 0; i < 3; i++) {
+        bufferInfos[i].buffer = buffers[i];
+        bufferInfos[i].range = VK_WHOLE_SIZE;
+    }
+
+    VkWriteDescriptorSet write[5]{};
     write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     write[0].dstSet = set;
     write[0].dstBinding = 0;
@@ -107,7 +115,16 @@ void updateDescriptorSet(VkDevice device, VkDescriptorSet set, VkImageView outpu
     write[1].descriptorCount = 1;
     write[1].pImageInfo = &imageInfos[1];
 
-    vkUpdateDescriptorSets(device, 2, write, 0, nullptr);
+    for (uint32_t i = 0; i < 3; i++) {
+        write[2 + i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write[2 + i].dstSet = set;
+        write[2 + i].dstBinding = 2 + i;
+        write[2 + i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        write[2 + i].descriptorCount = 1;
+        write[2 + i].pBufferInfo = &bufferInfos[i];
+    }
+
+    vkUpdateDescriptorSets(device, 5, write, 0, nullptr);
 }
 
 VkPipelineLayout createPipelineLayout(VkDevice device, VkDescriptorSetLayout descriptorSetLayout) {

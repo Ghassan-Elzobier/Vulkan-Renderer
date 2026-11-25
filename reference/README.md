@@ -10,7 +10,11 @@ Every reference is 800x600 at 1024 samples per pixel, made by the harness:
 ```
 ./build/Ray_Tracing_Harness --scene spheres --spp 1024 --skip-timing --out reference/spheres_<device>.png
 ./build/Ray_Tracing_Harness --scene grid    --spp 1024 --skip-timing --out reference/grid_<device>.png
+./build/Ray_Tracing_Harness --scene triangles --spp 1024 --skip-timing --out reference/triangles_<device>.png
 ```
+
+The triangles scene (414 triangles, brute force) is slow on lavapipe, about 0.65 s a frame at
+800x600, so its 1024-sample reference takes about 11 minutes there.
 
 Run from the repository root (the shader path `build/raytrace.comp.spv` is still hard-coded).
 `<device>` is `rx5700xt`, `irisxe` or `lavapipe` (the CPU driver the cloud uses).
@@ -73,3 +77,6 @@ On 2026-11-18 the Iris Xe ran well under its 560 Mpaths/s baseline for both vers
 runs with 30 s pauses gave main 235, 213, 303 against this branch 406, 350, 340, so the branch is
 not slower there; the laptop was. The iGPU shares power and cooling with the CPU, so never time
 it straight after a build.
+| lavapipe spheres and grid, before vs after adding the triangle buffers | 0 | 0 | 0 |
+| lavapipe spheres, hard-coded vs storage-buffer spheres | 0.0046 | - | 0.006% |
+| lavapipe grid, hard-coded vs storage-buffer spheres | 0.0069 | - | 0.014% |

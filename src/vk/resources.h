@@ -1,5 +1,4 @@
-// GPU memory the shader reads and writes. Today that is the two storage images;
-// the scene and BVH buffers will live here too.
+// GPU memory the shader reads and writes: the two storage images and the scene buffers.
 #pragma once
 
 #include "vk/vulkan.h"
@@ -28,3 +27,10 @@ struct Buffer {
 Buffer createBuffer(VkDevice device, VkPhysicalDevice physicalDevice, VkDeviceSize size,
                     VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
 void destroyBuffer(VkDevice device, const Buffer& buffer);
+
+// A device-local buffer filled with `size` bytes from `data`: the bytes go into a temporary
+// host-visible staging buffer, then one copy command moves them into GPU memory, which the
+// shader reads faster than memory the CPU can see. Waits for the copy before returning.
+Buffer createFilledBuffer(VkDevice device, VkPhysicalDevice physicalDevice, VkQueue queue,
+                          VkCommandPool commandPool, const void* data, VkDeviceSize size,
+                          VkBufferUsageFlags usage);
