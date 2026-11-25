@@ -78,3 +78,5 @@ runs with 30 s pauses gave main 235, 213, 303 against this branch 406, 350, 340,
 not slower there; the laptop was. The iGPU shares power and cooling with the CPU, so never time
 it straight after a build.
 | lavapipe spheres and grid, before vs after adding the triangle buffers | 0 | 0 | 0 |
+| lavapipe spheres, hard-coded vs storage-buffer spheres | 0.0046 | - | 0.006% |
+| lavapipe grid, hard-coded vs storage-buffer spheres | 0.0069 | - | 0.014% |

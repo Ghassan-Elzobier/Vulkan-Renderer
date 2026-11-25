@@ -67,15 +67,15 @@ int main() {
 
         VkCommandPool commandPool = createCommandPool(device, indices.compute.value());
 
-        // The window draws the spheres scene, which lives in the shader, so the triangle
-        // buffers only need to exist. An empty mesh gives one placeholder of each.
-        SceneBuffers sceneBuffers = uploadScene(device, physicalDevice, computeQueue, commandPool, Mesh{});
+        // The window draws the spheres scene (the pipeline's default SCENE).
+        SceneBuffers sceneBuffers = uploadScene(device, physicalDevice, computeQueue, commandPool, makeSpheresScene());
 
         VkDescriptorSetLayout descriptorSetLayout = createDescriptorSetLayout(device);
         VkDescriptorPool descriptorPool = createDescriptorPool(device);
         VkDescriptorSet descriptorSet = createDescriptorSet(device, descriptorPool, descriptorSetLayout);
         updateDescriptorSet(device, descriptorSet, storageImage.view, accumImage.view,
-                            sceneBuffers.triangles.buffer, sceneBuffers.materials.buffer);
+                            sceneBuffers.triangles.buffer, sceneBuffers.materials.buffer,
+                            sceneBuffers.spheres.buffer);
 
         VkPipelineLayout pipelineLayout = createPipelineLayout(device, descriptorSetLayout);
         VkShaderModule shaderModule = createShaderModule(device, "build/raytrace.comp.spv");

@@ -125,12 +125,12 @@ int main(int argc, char** argv) {
         uint32_t mismatches = 0;
         mismatches += check("triangles scene", makeTriangleScene().triangles, rayCount, bins);
 
-        Mesh dense;
+        Scene dense;
         appendIcosphere(dense, {0, 0, 0}, 1.0f, 5, 0); // 20480 triangles, all the same size
         mismatches += check("icosphere", dense.triangles, rayCount, bins);
 
         // Many separate shapes of very different sizes: where a good split matters most.
-        Mesh clutter;
+        Scene clutter;
         Rng rng{777u};
         for (int i = 0; i < 200; i++) {
             const Vec3 c{rng.range(-10, 10), rng.range(-10, 10), rng.range(-10, 10)};
@@ -144,7 +144,7 @@ int main(int argc, char** argv) {
         mismatches += check("clutter", clutter.triangles, rayCount, bins);
 
         if (!objPath.empty()) {
-            Mesh obj;
+            Scene obj;
             loadObj(obj, objPath, 0);
             mismatches += check(objPath, obj.triangles, rayCount, bins);
         }

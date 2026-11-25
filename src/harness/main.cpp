@@ -31,6 +31,7 @@ namespace {
 
 // The scene numbers match SCENE_* in shaders/raytrace.comp.
 const char* const kSceneNames[] = {"spheres", "grid", "triangles"};
+constexpr uint32_t kSceneGrid = 1;
 constexpr uint32_t kSceneTriangles = 2;
 
 struct Options {
@@ -173,22 +174,25 @@ int main(int argc, char** argv) {
 
         VkCommandPool commandPool = createCommandPool(device, indices.compute.value());
 
-        // The sphere scenes live in the shader; only the triangle scene needs buffers.
-        Mesh mesh;
-        if (options.scene == kSceneTriangles) {
-            if (options.objPath.empty()) {
-                mesh = makeTriangleScene();
-            } else {
-                mesh = makeObjScene(options.objPath);
-            }
+        // Every scene is built on the CPU and uploaded; the shader only knows how to trace it.
+        Scene scene;
+        if (!options.objPath.empty()) {
+            scene = makeObjScene(options.objPath);
+        } else if (options.scene == kSceneTriangles) {
+            scene = makeTriangleScene();
+        } else if (options.scene == kSceneGrid) {
+            scene = makeGridScene();
+        } else {
+            scene = makeSpheresScene();
         }
-        SceneBuffers sceneBuffers = uploadScene(device, physicalDevice, computeQueue, commandPool, mesh);
+        SceneBuffers sceneBuffers = uploadScene(device, physicalDevice, computeQueue, commandPool, scene);
 
         VkDescriptorSetLayout descriptorSetLayout = createDescriptorSetLayout(device);
         VkDescriptorPool descriptorPool = createDescriptorPool(device);
         VkDescriptorSet descriptorSet = createDescriptorSet(device, descriptorPool, descriptorSetLayout);
         updateDescriptorSet(device, descriptorSet, storageImage.view, accumImage.view,
-                            sceneBuffers.triangles.buffer, sceneBuffers.materials.buffer);
+                            sceneBuffers.triangles.buffer, sceneBuffers.materials.buffer,
+                            sceneBuffers.spheres.buffer);
 
         VkPipelineLayout pipelineLayout = createPipelineLayout(device, descriptorSetLayout);
         VkShaderModule shaderModule = createShaderModule(device, "build/raytrace.comp.spv");
@@ -217,7 +221,7 @@ int main(int argc, char** argv) {
         std::cout << "Resolution: " << extent.width << "x" << extent.height
                   << ", scene: " << kSceneNames[options.scene];
         if (options.scene == kSceneTriangles) {
-            std::cout << " (" << mesh.triangles.size() << " triangles"
+            std::cout << " (" << scene.triangles.size() << " triangles"
                       << (options.objPath.empty() ? "" : ", " + options.objPath) << ")";
         }
         std::cout << "\n";
